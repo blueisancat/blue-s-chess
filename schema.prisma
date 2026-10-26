@@ -1,0 +1,210 @@
+generator client { provider = "prisma-client-js" }
+datasource db { provider = "postgresql"
+  url = env("DATABASE_URL") }
+
+enum Role { USER MODERATOR ADMIN }
+enum GameStatus { WAITING ACTIVE FINISHED ABORTED }
+enum Result { WHITE BLACK DRAW }
+enum Variant { STANDARD CHESS960 KING_OF_THE_HILL THREE_CHECK CRAZYHOUSE ATOMIC HORDE RACING_KINGS }
+enum Perf { BULLET BLITZ RAPID CLASSICAL DAILY CHESS960 KOTH THREE_CHECK CRAZYHOUSE ATOMIC HORDE RACING_KINGS PUZZLE }
+enum TournamentFormat { SWISS ARENA ROUND_ROBIN }
+
+model User {
+  id         String   @id @default(cuid())
+  username   String   @unique
+  email      String   @unique
+  image      String?
+  country    String?
+  title      String?
+  role       Role     @default(USER)
+  createdAt  DateTime @default(now())
+  ratings    Rating[]
+  whiteGames Game[]   @relation("white")
+  blackGames Game[]   @relation("black")
+  friendsOut Friendship[] @relation("from")
+  friendsIn  Friendship[] @relation("to")
+  clubs      ClubMember[]
+  badges     UserBadge[]
+  sent       Message[] @relation("sender")
+  received   Message[] @relation("recipient")
+  posts      ForumPost[]
+  attempts   PuzzleAttempt[]
+}
+
+model Rating {
+  userId String
+  perf   Perf
+  rating Float @default(1500)
+  rd     Float @default(350)
+  vol    Float @default(0.06)
+  games  Int   @default(0)
+  user   User  @relation(fields: [userId], references: [id])
+  @@id([userId, perf])
+  @@index([perf, rating])
+}
+
+model Game {
+  id           String     @id @default(cuid())
+  whiteId      String?
+  blackId      String?
+  white        User?      @relation("white", fields: [whiteId], references: [id])
+  black        User?      @relation("black", fields: [blackId], references: [id])
+  variant      Variant    @default(STANDARD)
+  perf         Perf
+  baseMs       Int
+  incMs        Int
+  daysPerMove  Int?
+  rated        Boolean
+  status       GameStatus @default(WAITING)
+  result       Result?
+  reason       String?
+  initialFen   String?
+  pgn          String     @default("")
+  whiteDelta   Float?
+  blackDelta   Float?
+  createdAt    DateTime   @default(now())
+  endedAt      DateTime?
+  clubId       String?
+  tournamentId String?
+  @@index([whiteId])
+  @@index([blackId])
+  @@index([status])
+}
+
+model Friendship {
+  fromId   String
+  toId     String
+  accepted Boolean @default(false)
+  from     User @relation("from", fields: [fromId], references: [id])
+  to       User @relation("to", fields: [toId], references: [id])
+  @@id([fromId, toId])
+}
+
+model Message {
+  id          String   @id @default(cuid())
+  senderId    String
+  recipientId String
+  body        String
+  createdAt   DateTime @default(now())
+  sender      User @relation("sender", fields: [senderId], references: [id])
+  recipient   User @relation("recipient", fields: [recipientId], references: [id])
+}
+
+model Club {
+  id          String @id @default(cuid())
+  slug        String @unique
+  name        String
+  description String @default("")
+  members     ClubMember[]
+}
+model ClubMember {
+  clubId  String
+  userId  String
+  isAdmin Boolean @default(false)
+  club    Club @relation(fields: [clubId], references: [id])
+  user    User @relation(fields: [userId], references: [id])
+  @@id([clubId, userId])
+}
+
+model Tournament {
+  id          String @id @default(cuid())
+  name        String
+  format      TournamentFormat
+  startsAt    DateTime
+  baseMs      Int
+  incMs       Int
+  rounds      Int?
+  durationMin Int?
+  clubId      String?
+  entries     TournamentEntry[]
+}
+model TournamentEntry {
+  tournamentId String
+  userId       String
+  score        Float @default(0)
+  tiebreak     Float @default(0)
+  tournament   Tournament @relation(fields: [tournamentId], references: [id])
+  @@id([tournamentId, userId])
+}
+
+model Puzzle {
+  id          String @id
+  fen         String
+  moves       String
+  rating      Float
+  rd          Float  @default(100)
+  themes      String[]
+  openingTags String[]
+  attempts    PuzzleAttempt[]
+  @@index([rating])
+}
+model PuzzleAttempt {
+  id           String   @id @default(cuid())
+  userId       String
+  puzzleId     String
+  solved       Boolean
+  ratingBefore Float
+  createdAt    DateTime @default(now())
+  user         User   @relation(fields: [userId], references: [id])
+  puzzle       Puzzle @relation(fields: [puzzleId], references: [id])
+}
+
+model Course {
+  id      String @id @default(cuid())
+  title   String
+  level   Int
+  lessons Lesson[]
+}
+model Lesson {
+  id       String @id @default(cuid())
+  courseId String
+  order    Int
+  title    String
+  kind     String
+  content  Json
+  course   Course @relation(fields: [courseId], references: [id])
+}
+
+model RepertoireLine {
+  id       String   @id @default(cuid())
+  userId   String
+  color    String
+  fen      String
+  san      String
+  dueAt    DateTime @default(now())
+  ease     Float    @default(2.5)
+  interval Int      @default(0)
+}
+
+model ForumCategory {
+  id    String @id @default(cuid())
+  name  String
+  posts ForumPost[]
+}
+model ForumPost {
+  id         String   @id @default(cuid())
+  categoryId String
+  authorId   String
+  parentId   String?
+  title      String?
+  body       String
+  createdAt  DateTime @default(now())
+  hidden     Boolean  @default(false)
+  category   ForumCategory @relation(fields: [categoryId], references: [id])
+  author     User @relation(fields: [authorId], references: [id])
+}
+
+model Badge {
+  id    String @id
+  slug  String @unique
+  name  String
+  users UserBadge[]
+}
+model UserBadge {
+  userId   String
+  badgeId  String
+  earnedAt DateTime @default(now())
+  user     User  @relation(fields: [userId], references: [id])
+  badge    Badge @relation(fields: [badgeId], references: [id])
+  @@id([userId, badgeId])
+}
